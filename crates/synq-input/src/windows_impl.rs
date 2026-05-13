@@ -18,7 +18,7 @@ impl WindowsInputEngine {
 }
 
 impl InputEngine for WindowsInputEngine {
-    fn inject_event(&self, event: &InputEvent) -> SynqResult<()> {
+    fn inject_event(&self, _event: &InputEvent) -> SynqResult<()> {
         killswitch::check()?;
         // TODO: Implement SendInput injection for each InputEventKind
         tracing::warn!("Windows input injection not yet implemented");
