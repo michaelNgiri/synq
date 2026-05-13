@@ -62,6 +62,26 @@ function App() {
     // Note: We keep isDiscovering true to show the searching state
   }
 
+  const [manualIp, setManualIp] = useState("");
+  const [showManual, setShowManual] = useState(false);
+
+  async function handleManualConnect() {
+    if (!manualIp) return;
+    try {
+      // For now, we'll just simulate a connection or add it to the list
+      const mockPeer: PeerInfo = {
+        device_id: { 0: "manual-link" },
+        name: `Remote Device (${manualIp})`,
+        platform: "Remote",
+        address: manualIp
+      };
+      setPeers(prev => [...prev, mockPeer]);
+      alert(`Manual link established with ${manualIp}. Starting handshake...`);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   return (
     <main className="container">
       <header>
@@ -72,19 +92,51 @@ function App() {
         </div>
       </header>
 
-      {!isDiscovering && peers.length === 0 ? (
+      {!isDiscovering && peers.length === 0 && !showManual ? (
         <section className="card">
           <div className="status-info">
             <div className="pulse-dot"></div>
             <p>Continuity daemon active & running</p>
           </div>
           
-          <button className="btn-primary" onClick={handleDiscovery}>
-            🌐 Start Discovery
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+            <button className="btn-primary" onClick={handleDiscovery}>
+              🌐 Start Discovery
+            </button>
+            <button 
+              style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+              onClick={() => setShowManual(true)}
+            >
+              ⌨️ Connect Manually
+            </button>
+          </div>
         </section>
       ) : (
         <section className="peers-section">
+          {showManual && (
+            <div className="card" style={{ marginBottom: '20px', animation: 'fadeIn 0.3s ease' }}>
+              <h3 style={{ fontSize: '0.9rem', marginBottom: '12px' }}>Enter Device IP</h3>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input 
+                  type="text" 
+                  placeholder="e.g. 192.168.1.50" 
+                  value={manualIp}
+                  onChange={(e) => setManualIp(e.target.value)}
+                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                />
+                <button className="btn-primary" style={{ padding: '0 20px' }} onClick={handleManualConnect}>
+                  Link
+                </button>
+              </div>
+              <button 
+                onClick={() => setShowManual(false)}
+                style={{ marginTop: '12px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem' }}
+              >
+                ← Back to Discovery
+              </button>
+            </div>
+          )}
+
           {isDiscovering && (
             <div className="searching-container">
               <div className="searching-rings">

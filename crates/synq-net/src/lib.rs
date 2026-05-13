@@ -64,56 +64,76 @@ impl SynqNetLayer {
     }
 
     /// Start the background task to continuously monitor for peers.
-    pub fn start_discovery_monitor(&self, app_handle: tauri::AppHandle) {
+    pub fn start_discovery_monitor(&self, app_handle: tauri::AppHandle, device_id: DeviceId, name: String) {
         let peers_clone = self.discovered_peers.clone();
         let discovery_clone = self.discovery.clone();
         let app_clone = app_handle.clone();
+        let daemon_peers = self.discovered_peers.clone();
+        let daemon_app = app_handle.clone();
 
-        info!("Starting background discovery monitor...");
+        info!("Starting background discovery monitor (mDNS + UDP Broadcast)...");
 
+        // --- Task 1: mDNS Discovery (Standard) ---
         tokio::spawn(async move {
-            match discovery_clone.browse() {
-                Ok(receiver) => {
-                    info!("mDNS browser active. Waiting for events...");
-                    while let Ok(event) = receiver.recv() {
-                        match event {
-                            mdns_sd::ServiceEvent::ServiceResolved(info) => {
-                                info!("Service resolved: {:?}", info.get_fullname());
-                                if let Some(peer) = discovery::info_to_peer(&info) {
-                                    let mut peers = peers_clone.lock().await;
-                                    if !peers.iter().any(|p| p.device_id == peer.device_id) {
-                                        info!("NEW PEER DETECTED: {} ({}) at {}", peer.name, peer.device_id, peer.address.as_deref().unwrap_or("unknown"));
-                                        peers.push(peer.clone());
-                                        let _ = app_clone.emit("peer-discovered", peer);
-                                    } else {
-                                        info!("Known peer updated: {}", peer.name);
-                                    }
-                                } else {
-                                    warn!("Failed to parse peer info from mDNS record");
+            if let Ok(receiver) = discovery_clone.browse() {
+                while let Ok(event) = receiver.recv() {
+                    match event {
+                        mdns_sd::ServiceEvent::ServiceResolved(info) => {
+                            if let Some(peer) = discovery::info_to_peer(&info) {
+                                let mut peers = peers_clone.lock().await;
+                                if !peers.iter().any(|p| p.device_id == peer.device_id) {
+                                    info!("mDNS Peer Discovered: {} ({})", peer.name, peer.device_id);
+                                    peers.push(peer.clone());
+                                    let _ = app_clone.emit("peer-discovered", peer);
                                 }
                             }
-                            mdns_sd::ServiceEvent::ServiceFound(service_type, instance_name) => {
-                                info!("Service found (not yet resolved): {} on {}", instance_name, service_type);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+
+        // --- Task 2: UDP Broadcast Shout (Reliability Fallback) ---
+        tokio::spawn(async move {
+            use tokio::net::UdpSocket;
+            let socket = UdpSocket::bind("0.0.0.0:52821").await.ok();
+            if let Some(socket) = socket {
+                socket.set_broadcast(true).unwrap();
+                let mut buf = [0u8; 1024];
+                
+                loop {
+                    tokio::select! {
+                        // 1. Listen for beacons from others
+                        result = socket.recv_from(&mut buf) => {
+                            if let Ok((len, _addr)) = result {
+                                if let Ok(peer) = serde_json::from_slice::<PeerInfo>(&buf[..len]) {
+                                    let mut peers = daemon_peers.lock().await;
+                                    if !peers.iter().any(|p| p.device_id == peer.device_id) {
+                                        info!("UDP Shout Received: {} ({})", peer.name, peer.device_id);
+                                        peers.push(peer.clone());
+                                        let _ = daemon_app.emit("peer-discovered", peer);
+                                    }
+                                }
                             }
-                            mdns_sd::ServiceEvent::ServiceRemoved(_service_type, instance_name) => {
-                                let mut peers = peers_clone.lock().await;
-                                peers.retain(|p| p.device_id.0.to_string() != instance_name);
-                                info!("Peer removed: {}", instance_name);
-                                let _ = app_clone.emit("peer-removed", instance_name);
-                            }
-                            mdns_sd::ServiceEvent::SearchStarted(service_type) => {
-                                info!("mDNS search started for {}", service_type);
-                            }
-                            _ => {
-                                // Log other events for debugging
-                                info!("mDNS discovery event: {:?}", event);
+                        }
+                        // 2. Periodically shout our own identity
+                        _ = tokio::time::sleep(tokio::time::Duration::from_secs(3)) => {
+                            let ip = local_ip_address::local_ip().ok();
+                            if let Some(ip) = ip {
+                                let local_peer = PeerInfo {
+                                    device_id,
+                                    name: name.clone(),
+                                    platform: if cfg!(target_os = "macos") { synq_core::Platform::MacOS } else { synq_core::Platform::Windows },
+                                    screen: synq_core::ScreenGeometry { width: 0, height: 0, x: 0, y: 0 },
+                                    address: Some(format!("{}:52820", ip)),
+                                };
+                                if let Ok(data) = serde_json::to_vec(&local_peer) {
+                                    let _ = socket.send_to(&data, "255.255.255.255:52821").await;
+                                }
                             }
                         }
                     }
-                    warn!("mDNS receiver channel closed");
-                }
-                Err(e) => {
-                    error!("CRITICAL: Failed to start mDNS browser: {:?}", e);
                 }
             }
         });
