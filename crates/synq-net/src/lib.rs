@@ -106,34 +106,8 @@ impl SynqNetLayer {
 #[async_trait]
 impl NetLayer for SynqNetLayer {
     async fn discover_peers(&self) -> SynqResult<Vec<PeerInfo>> {
-        info!("Browsing for peers via mDNS...");
-        let receiver = self.discovery.browse()?;
-        let mut peers = Vec::new();
-
-        // Simple discovery: wait 2 seconds for responses
-        // In a production app, we would use a long-running task and events.
-        let timeout = tokio::time::sleep(tokio::time::Duration::from_secs(2));
-        tokio::pin!(timeout);
-
-        loop {
-            tokio::select! {
-                event = async { receiver.recv() } => {
-                    match event {
-                        Ok(mdns_sd::ServiceEvent::ServiceResolved(info)) => {
-                            if let Some(peer) = discovery::info_to_peer(&info) {
-                                info!("Found peer: {} ({})", peer.name, peer.device_id);
-                                peers.push(peer);
-                            }
-                        }
-                        Ok(_) => {},
-                        Err(_) => break,
-                    }
-                }
-                _ = &mut timeout => break,
-            }
-        }
-
-        Ok(peers)
+        // Return the current snapshot of discovered peers
+        Ok(self.discovered_peers.lock().await.clone())
     }
 
     async fn connect(&mut self, peer: &PeerInfo) -> SynqResult<()> {

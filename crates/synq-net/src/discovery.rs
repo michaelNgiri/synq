@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub const SERVICE_TYPE: &str = "_synq._tcp.local.";
 
 /// Discovery service that finds Synq peers on the local network.
+#[derive(Clone)]
 pub struct MdnsDiscovery {
     daemon: ServiceDaemon,
 }
