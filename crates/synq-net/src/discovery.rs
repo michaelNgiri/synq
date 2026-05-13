@@ -38,11 +38,15 @@ impl MdnsDiscovery {
         properties.insert("width".to_string(), local.screen.width.to_string());
         properties.insert("height".to_string(), local.screen.height.to_string());
 
+        // Get the actual local IP instead of 0.0.0.0 for better reliability
+        let ip = local_ip_address::local_ip()
+            .map_err(|e| SynqError::Discovery(format!("Failed to get local IP: {e}")))?;
+
         let service_info = ServiceInfo::new(
             SERVICE_TYPE,
             &device_id, // instance name is device ID
             &format!("{}.local.", device_id),
-            "0.0.0.0", // will be auto-filled by daemon
+            &ip.to_string(), 
             52820,     // Default Synq port
             Some(properties),
         ).map_err(|e| SynqError::Discovery(format!("Failed to create service info: {e}")))?;
@@ -50,7 +54,7 @@ impl MdnsDiscovery {
         self.daemon.register(service_info)
             .map_err(|e| SynqError::Discovery(format!("Failed to register service: {e}")))?;
 
-        tracing::info!("Registered mDNS service for {}", name);
+        tracing::info!("Registered mDNS service for {} at {}", name, ip);
         Ok(())
     }
 

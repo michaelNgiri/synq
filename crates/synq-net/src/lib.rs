@@ -69,32 +69,51 @@ impl SynqNetLayer {
         let discovery_clone = self.discovery.clone();
         let app_clone = app_handle.clone();
 
+        info!("Starting background discovery monitor...");
+
         tokio::spawn(async move {
-            if let Ok(receiver) = discovery_clone.browse() {
-                while let Ok(event) = receiver.recv() {
-                    match event {
-                        mdns_sd::ServiceEvent::ServiceResolved(info) => {
-                            if let Some(peer) = discovery::info_to_peer(&info) {
-                                let mut peers = peers_clone.lock().await;
-                                if !peers.iter().any(|p| p.device_id == peer.device_id) {
-                                    info!("New peer discovered: {} ({})", peer.name, peer.device_id);
-                                    peers.push(peer.clone());
-                                    
-                                    // Notify frontend via Tauri Event
-                                    let _ = app_clone.emit("peer-discovered", peer);
+            match discovery_clone.browse() {
+                Ok(receiver) => {
+                    info!("mDNS browser active. Waiting for events...");
+                    while let Ok(event) = receiver.recv() {
+                        match event {
+                            mdns_sd::ServiceEvent::ServiceResolved(info) => {
+                                info!("Service resolved: {:?}", info.get_fullname());
+                                if let Some(peer) = discovery::info_to_peer(&info) {
+                                    let mut peers = peers_clone.lock().await;
+                                    if !peers.iter().any(|p| p.device_id == peer.device_id) {
+                                        info!("NEW PEER DETECTED: {} ({}) at {}", peer.name, peer.device_id, peer.address.as_deref().unwrap_or("unknown"));
+                                        peers.push(peer.clone());
+                                        let _ = app_clone.emit("peer-discovered", peer);
+                                    } else {
+                                        info!("Known peer updated: {}", peer.name);
+                                    }
+                                } else {
+                                    warn!("Failed to parse peer info from mDNS record");
                                 }
                             }
+                            mdns_sd::ServiceEvent::ServiceFound(service_type, instance_name) => {
+                                info!("Service found (not yet resolved): {} on {}", instance_name, service_type);
+                            }
+                            mdns_sd::ServiceEvent::ServiceRemoved(_service_type, instance_name) => {
+                                let mut peers = peers_clone.lock().await;
+                                peers.retain(|p| p.device_id.0.to_string() != instance_name);
+                                info!("Peer removed: {}", instance_name);
+                                let _ = app_clone.emit("peer-removed", instance_name);
+                            }
+                            mdns_sd::ServiceEvent::SearchStarted(service_type) => {
+                                info!("mDNS search started for {}", service_type);
+                            }
+                            _ => {
+                                // Log other events for debugging
+                                info!("mDNS discovery event: {:?}", event);
+                            }
                         }
-                        mdns_sd::ServiceEvent::ServiceRemoved(_service_type, instance_name) => {
-                            let mut peers = peers_clone.lock().await;
-                            peers.retain(|p| p.device_id.0.to_string() != instance_name);
-                            info!("Peer removed: {}", instance_name);
-                            
-                            // Notify frontend
-                            let _ = app_clone.emit("peer-removed", instance_name);
-                        }
-                        _ => {}
                     }
+                    warn!("mDNS receiver channel closed");
+                }
+                Err(e) => {
+                    error!("CRITICAL: Failed to start mDNS browser: {:?}", e);
                 }
             }
         });
