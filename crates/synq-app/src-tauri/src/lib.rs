@@ -114,7 +114,7 @@ pub fn run() {
 
             let tray_icon = app.default_window_icon().unwrap().clone();
 
-            let _tray = TrayIconBuilder::new()
+            let tray = TrayIconBuilder::new()
                 .icon(tray_icon)
                 .menu(&menu)
                 .on_tray_icon_event(|tray, event| {
@@ -146,6 +146,9 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            // Keep the tray alive by managing it
+            app.manage(tray);
 
             Ok(())
         })
