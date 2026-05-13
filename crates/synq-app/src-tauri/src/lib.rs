@@ -6,7 +6,7 @@ use tracing_subscriber;
 
 // Core Synq Crates
 use synq_core::{DeviceId, SynqResult};
-use synq_net::SynqNetLayer;
+use synq_net::{SynqNetLayer, NetLayer};
 use synq_input::{create_input_engine, InputEngine, killswitch};
 use synq_clipboard::SynqClipboardEngine;
 use synq_focus::{create_focus_arbiter, FocusArbiter, FocusConfig};
