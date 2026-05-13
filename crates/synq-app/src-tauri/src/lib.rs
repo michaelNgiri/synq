@@ -65,12 +65,33 @@ async fn get_device_info(state: State<'_, AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn start_discovery(state: State<'_, AppState>) -> Result<(), String> {
-    let _daemon = state.daemon.lock().await;
-    // In a real implementation, we would call daemon.net.discover_peers()
-    // and push the results to the frontend via events.
-    info!("Discovery started via frontend command");
-    Ok(())
+async fn start_discovery(state: State<'_, AppState>) -> Result<Vec<synq_core::PeerInfo>, String> {
+    use synq_core::{PeerInfo, Platform, ScreenGeometry};
+    
+    let daemon = state.daemon.lock().await;
+    
+    // Construct local peer info for registration
+    let local_peer = PeerInfo {
+        device_id: daemon.device_id,
+        name: whoami::devicename(), // Use machine name
+        platform: if cfg!(target_os = "macos") { Platform::MacOS } else { Platform::Windows },
+        screen: ScreenGeometry {
+            width: 1920, // TODO: Get actual screen size
+            height: 1080,
+            x: 0,
+            y: 0,
+        },
+        address: None, // Will be filled by mDNS
+    };
+
+    // 1. Register ourselves so others can find us
+    daemon.net.register_local(&local_peer).map_err(|e| e.to_string())?;
+    
+    // 2. Look for others
+    info!("Discovery started for device: {}", local_peer.name);
+    let peers = daemon.net.discover_peers().await.map_err(|e| e.to_string())?;
+    
+    Ok(peers)
 }
 
 #[tauri::command]
