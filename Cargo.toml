@@ -31,6 +31,7 @@ async-trait = "0.1"
 bytes = "1"
 blake3 = "1"
 whoami = "1.5"
+tauri = { version = "2" }
 
 # Internal crates
 synq-core = { path = "crates/synq-core" }

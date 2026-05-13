@@ -9,6 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tracing::{info, warn, error};
+use tauri::Emitter;
 
 use synq_core::{PeerInfo, SynqResult, SynqError};
 pub use reconnect::{ReconnectState, ReconnectConfig};

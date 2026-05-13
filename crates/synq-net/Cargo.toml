@@ -23,6 +23,7 @@ bytes = { workspace = true }
 uuid = { workspace = true }
 whoami = "1.5"
 tracing-subscriber = { workspace = true }
+tauri = { workspace = true }
 
 # Noise Protocol for E2EE
 snow = "0.9"
