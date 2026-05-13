@@ -176,7 +176,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let state = app_handle.state::<AppState>();
                 let daemon = state.daemon.lock().await;
-                daemon.net.start_discovery_monitor();
+                daemon.net.start_discovery_monitor(app_handle.clone());
             });
 
             Ok(())

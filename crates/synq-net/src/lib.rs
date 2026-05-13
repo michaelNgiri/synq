@@ -63,10 +63,10 @@ impl SynqNetLayer {
     }
 
     /// Start the background task to continuously monitor for peers.
-    /// This MUST be called from within a Tokio runtime (e.g., in Tauri's setup hook).
-    pub fn start_discovery_monitor(&self) {
+    pub fn start_discovery_monitor(&self, app_handle: tauri::AppHandle) {
         let peers_clone = self.discovered_peers.clone();
         let discovery_clone = self.discovery.clone();
+        let app_clone = app_handle.clone();
 
         tokio::spawn(async move {
             if let Ok(receiver) = discovery_clone.browse() {
@@ -77,7 +77,10 @@ impl SynqNetLayer {
                                 let mut peers = peers_clone.lock().await;
                                 if !peers.iter().any(|p| p.device_id == peer.device_id) {
                                     info!("New peer discovered: {} ({})", peer.name, peer.device_id);
-                                    peers.push(peer);
+                                    peers.push(peer.clone());
+                                    
+                                    // Notify frontend via Tauri Event
+                                    let _ = app_clone.emit("peer-discovered", peer);
                                 }
                             }
                         }
@@ -85,6 +88,9 @@ impl SynqNetLayer {
                             let mut peers = peers_clone.lock().await;
                             peers.retain(|p| p.device_id.0.to_string() != instance_name);
                             info!("Peer removed: {}", instance_name);
+                            
+                            // Notify frontend
+                            let _ = app_clone.emit("peer-removed", instance_name);
                         }
                         _ => {}
                     }

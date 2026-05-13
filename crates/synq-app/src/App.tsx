@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 function App() {
@@ -16,16 +17,32 @@ function App() {
   const [isDiscovering, setIsDiscovering] = useState(false);
 
   useEffect(() => {
-    async function fetchDeviceId() {
+    async function init() {
       try {
         const id = await invoke<string>("get_device_info");
         setDeviceId(id);
       } catch (e) {
         console.error(e);
-        setDeviceId("Error");
       }
     }
-    fetchDeviceId();
+    init();
+
+    // Listen for discovery events from backend
+    const unlistenDiscovered = listen<PeerInfo>("peer-discovered", (event) => {
+      setPeers((prev) => {
+        if (prev.find((p) => p.device_id[0] === event.payload.device_id[0])) return prev;
+        return [...prev, event.payload];
+      });
+    });
+
+    const unlistenRemoved = listen<string>("peer-removed", (event) => {
+      setPeers((prev) => prev.filter((p) => p.device_id[0] !== event.payload));
+    });
+
+    return () => {
+      unlistenDiscovered.then((f) => f());
+      unlistenRemoved.then((f) => f());
+    };
   }, []);
 
   async function handleEmergencyKill() {
@@ -36,13 +53,13 @@ function App() {
   async function handleDiscovery() {
     setIsDiscovering(true);
     try {
+      // Trigger registration and get current list
       const foundPeers = await invoke<PeerInfo[]>("start_discovery");
       setPeers(foundPeers);
     } catch (e) {
       console.error(e);
-    } finally {
-      setIsDiscovering(false);
     }
+    // Note: We keep isDiscovering true to show the searching state
   }
 
   return (
@@ -55,41 +72,58 @@ function App() {
         </div>
       </header>
 
-      <section className="card">
-        <div className="status-info">
-          <div className="pulse-dot"></div>
-          <p>Continuity daemon active & running</p>
-        </div>
-        
-        <button 
-          className="btn-primary" 
-          onClick={handleDiscovery} 
-          disabled={isDiscovering}
-        >
-          {isDiscovering ? (
-            <>🔍 Searching Network...</>
-          ) : (
-            <>🌐 Start Discovery</>
-          )}
-        </button>
-      </section>
-
-      {peers.length > 0 && (
+      {!isDiscovering && peers.length === 0 ? (
+        <section className="card">
+          <div className="status-info">
+            <div className="pulse-dot"></div>
+            <p>Continuity daemon active & running</p>
+          </div>
+          
+          <button className="btn-primary" onClick={handleDiscovery}>
+            🌐 Start Discovery
+          </button>
+        </section>
+      ) : (
         <section className="peers-section">
-          <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', paddingLeft: '8px' }}>
-            DISCOVERED PEERS
-          </h3>
-          {peers.map((peer) => (
-            <div key={peer.device_id[0]} className="peer-card">
-              <div className="peer-info">
-                <h4>{peer.name}</h4>
-                <span>{peer.platform} • {peer.address}</span>
+          {isDiscovering && (
+            <div className="searching-container">
+              <div className="searching-rings">
+                <div className="ring"></div>
+                <div className="ring"></div>
+                <div className="ring"></div>
+                <span style={{ fontSize: '1.5rem' }}>📡</span>
               </div>
-              <button className="connect-badge" onClick={() => alert("Connecting...")}>
-                Connect
-              </button>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                Searching for nearby devices...
+              </p>
             </div>
-          ))}
+          )}
+
+          {peers.length > 0 && (
+            <>
+              <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', paddingLeft: '8px', marginTop: '20px' }}>
+                DISCOVERED PEERS
+              </h3>
+              {peers.map((peer) => (
+                <div key={peer.device_id[0]} className="peer-card">
+                  <div className="peer-info">
+                    <h4>{peer.name}</h4>
+                    <span>{peer.platform} • {peer.address || "Local Network"}</span>
+                  </div>
+                  <button className="connect-badge" onClick={() => alert("Connecting...")}>
+                    Connect
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+
+          <button 
+            style={{ marginTop: '20px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+            onClick={() => setIsDiscovering(false)}
+          >
+            Stop Searching
+          </button>
         </section>
       )}
 
