@@ -112,24 +112,22 @@ pub fn run() {
             let kill_i = MenuItem::with_id(app, "kill", "Emergency Kill", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &kill_i, &quit_i])?;
 
-            let tray_icon = app.default_window_icon().cloned().unwrap_or_else(|| {
-                // Fallback or handle missing icon
-                error!("Default window icon not found, tray might be missing icon");
-                tauri::Icon::Raw(vec![]) // Replace with a real fallback if needed
-            });
+            let tray_icon = app.default_window_icon().unwrap().clone();
 
             let _tray = TrayIconBuilder::new()
                 .icon(tray_icon)
                 .menu(&menu)
-                .on_tray_icon_event(|app, event| {
+                .on_tray_icon_event(|tray, event| {
                     if let tauri::tray::TrayIconEvent::Click { .. } = event {
-                        let window = app.get_webview_window("main").unwrap();
-                        let is_visible = window.is_visible().unwrap_or(false);
-                        if is_visible {
-                            window.hide().unwrap();
-                        } else {
-                            window.show().unwrap();
-                            window.set_focus().unwrap();
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let is_visible = window.is_visible().unwrap_or(false);
+                            if is_visible {
+                                window.hide().unwrap();
+                            } else {
+                                window.show().unwrap();
+                                window.set_focus().unwrap();
+                            }
                         }
                     }
                 })
