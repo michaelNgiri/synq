@@ -1,0 +1,13 @@
+# Rust
+target/
+Cargo.lock
+
+# Node/Tauri
+crates/synq-app/node_modules/
+crates/synq-app/dist/
+crates/synq-app/src-tauri/target/
+
+# OS/IDE
+.DS_Store
+.vscode/
+.idea/

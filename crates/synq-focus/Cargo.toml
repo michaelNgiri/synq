@@ -1,0 +1,23 @@
+[package]
+name = "synq-focus"
+description = "Focus arbitration — screen edge detection, sticky buffer, and cursor warp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "verify-focus"
+path = "src/bin/verify_focus.rs"
+
+[dependencies]
+synq-core = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.24"

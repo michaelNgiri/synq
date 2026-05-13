@@ -1,0 +1,16 @@
+[package]
+name = "synq-core"
+description = "Shared types, configuration, and error handling for Synq"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+blake3 = { workspace = true }
+bytes = { workspace = true }
