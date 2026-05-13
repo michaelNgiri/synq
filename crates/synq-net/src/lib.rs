@@ -8,7 +8,7 @@ pub mod transport;
 use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
-use tracing::{info, warn, error};
+use tracing::info;
 use tauri::Emitter;
 
 use synq_core::{PeerInfo, SynqResult, SynqError, DeviceId};
