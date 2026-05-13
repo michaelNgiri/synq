@@ -32,6 +32,7 @@ bytes = "1"
 blake3 = "1"
 whoami = "1.5"
 tauri = { version = "2" }
+local-ip-address = "0.6"
 
 # Internal crates
 synq-core = { path = "crates/synq-core" }

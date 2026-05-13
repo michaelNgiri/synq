@@ -44,7 +44,7 @@ pub struct SynqNetLayer {
     discovered_peers: Arc<Mutex<Vec<PeerInfo>>>,
     transport: Option<Arc<WebRtcTransport>>,
     noise: Option<Arc<Mutex<NoiseSession>>>,
-    reconnect: ReconnectState,
+    // reconnect: ReconnectState, // Removed as it is currently unused
     local_private_key: Vec<u8>,
 }
 
@@ -58,7 +58,7 @@ impl SynqNetLayer {
             discovered_peers,
             transport: None,
             noise: None,
-            reconnect: ReconnectState::new(ReconnectConfig::default()),
+            // reconnect: ReconnectState::new(ReconnectConfig::default()),
             local_private_key,
         })
     }

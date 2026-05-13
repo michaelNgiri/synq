@@ -59,6 +59,13 @@ impl SynqDaemon {
 // -------------------------------------------------------------------------
 
 #[tauri::command]
+async fn get_local_ip() -> Result<String, String> {
+    local_ip_address::local_ip()
+        .map(|ip| ip.to_string())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_device_info(state: State<'_, AppState>) -> Result<String, String> {
     let daemon = state.daemon.lock().await;
     Ok(daemon.device_id.to_string())
@@ -206,6 +213,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_device_info,
+            get_local_ip,
             start_discovery,
             emergency_kill
         ])

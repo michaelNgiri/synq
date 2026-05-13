@@ -16,6 +16,8 @@ function App() {
   const [peers, setPeers] = useState<PeerInfo[]>([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
 
+  const [localIp, setLocalIp] = useState<string | null>(null);
+
   useEffect(() => {
     async function init() {
       try {
@@ -59,7 +61,6 @@ function App() {
     } catch (e) {
       console.error(e);
     }
-    // Note: We keep isDiscovering true to show the searching state
   }
 
   const [manualIp, setManualIp] = useState("");
@@ -82,13 +83,40 @@ function App() {
     }
   }
 
+  async function handleRevealIp() {
+    try {
+      const ip = await invoke<string>("get_local_ip");
+      setLocalIp(ip);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   return (
     <main className="container">
       <header>
         <h1>Synq Engine</h1>
-        <div className="device-badge">
-          <span>Local Device ID:</span>
-          <strong>{deviceId}</strong>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+          <div className="device-badge">
+            <span>Local Device ID:</span>
+            <strong>{deviceId}</strong>
+          </div>
+          {localIp ? (
+            <div className="device-badge" style={{ cursor: 'pointer' }} onClick={() => {
+              navigator.clipboard.writeText(localIp);
+              alert("IP Copied to clipboard!");
+            }}>
+              <span>Local IP:</span>
+              <strong>{localIp} (Click to copy)</strong>
+            </div>
+          ) : (
+            <button 
+              onClick={handleRevealIp}
+              style={{ background: 'transparent', border: 'none', color: 'var(--accent-color)', fontSize: '0.8rem', textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              Show Local IP for Manual Link
+            </button>
+          )}
         </div>
       </header>
 
