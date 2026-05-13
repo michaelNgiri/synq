@@ -172,9 +172,12 @@ pub fn run() {
             app.manage(tray);
 
             // Start the background discovery monitor now that the runtime is ready
-            let daemon = app.state::<AppState>();
-            let daemon = daemon.daemon.lock().await;
-            daemon.net.start_discovery_monitor();
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app_handle.state::<AppState>();
+                let daemon = state.daemon.lock().await;
+                daemon.net.start_discovery_monitor();
+            });
 
             Ok(())
         })
