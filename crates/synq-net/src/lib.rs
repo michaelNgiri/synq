@@ -40,6 +40,7 @@ pub enum ConnectionState {
 /// Standard implementation of the Synq network layer.
 pub struct SynqNetLayer {
     discovery: discovery::MdnsDiscovery,
+    discovered_peers: Arc<Mutex<Vec<PeerInfo>>>,
     transport: Option<Arc<WebRtcTransport>>,
     noise: Option<Arc<Mutex<NoiseSession>>>,
     reconnect: ReconnectState,
@@ -48,8 +49,40 @@ pub struct SynqNetLayer {
 
 impl SynqNetLayer {
     pub fn new(local_private_key: Vec<u8>) -> SynqResult<Self> {
+        let discovery = discovery::MdnsDiscovery::new()?;
+        let discovered_peers = Arc::new(Mutex::new(Vec::new()));
+
+        // Start a background task to continuously monitor for peers
+        let peers_clone = discovered_peers.clone();
+        let discovery_clone = discovery.clone();
+
+        tokio::spawn(async move {
+            if let Ok(receiver) = discovery_clone.browse() {
+                while let Ok(event) = receiver.recv() {
+                    match event {
+                        mdns_sd::ServiceEvent::ServiceResolved(info) => {
+                            if let Some(peer) = discovery::info_to_peer(&info) {
+                                let mut peers = peers_clone.lock().await;
+                                if !peers.iter().any(|p| p.device_id == peer.device_id) {
+                                    info!("New peer discovered: {} ({})", peer.name, peer.device_id);
+                                    peers.push(peer);
+                                }
+                            }
+                        }
+                        mdns_sd::ServiceEvent::ServiceRemoved(_service_type, instance_name) => {
+                            let mut peers = peers_clone.lock().await;
+                            peers.retain(|p| p.device_id.0.to_string() != instance_name);
+                            info!("Peer removed: {}", instance_name);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+
         Ok(Self {
-            discovery: discovery::MdnsDiscovery::new()?,
+            discovery,
+            discovered_peers,
             transport: None,
             noise: None,
             reconnect: ReconnectState::new(ReconnectConfig::default()),
