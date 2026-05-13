@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tracing::{info, warn, error};
 use tauri::Emitter;
 
-use synq_core::{PeerInfo, SynqResult, SynqError};
+use synq_core::{PeerInfo, SynqResult, SynqError, DeviceId};
 pub use reconnect::{ReconnectState, ReconnectConfig};
 pub use transport::WebRtcTransport;
 pub use noise::{NoiseHandshake, NoiseSession};
