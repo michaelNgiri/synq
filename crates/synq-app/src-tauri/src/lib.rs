@@ -171,6 +171,11 @@ pub fn run() {
             // Keep the tray alive by managing it
             app.manage(tray);
 
+            // Start the background discovery monitor now that the runtime is ready
+            let daemon = app.state::<AppState>();
+            let daemon = daemon.daemon.lock().await;
+            daemon.net.start_discovery_monitor();
+
             Ok(())
         })
         .on_window_event(|window, event| match event {

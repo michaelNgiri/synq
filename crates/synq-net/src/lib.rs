@@ -52,9 +52,21 @@ impl SynqNetLayer {
         let discovery = discovery::MdnsDiscovery::new()?;
         let discovered_peers: Arc<Mutex<Vec<PeerInfo>>> = Arc::new(Mutex::new(Vec::new()));
 
-        // Start a background task to continuously monitor for peers
-        let peers_clone = discovered_peers.clone();
-        let discovery_clone = discovery.clone();
+        Ok(Self {
+            discovery,
+            discovered_peers,
+            transport: None,
+            noise: None,
+            reconnect: ReconnectState::new(ReconnectConfig::default()),
+            local_private_key,
+        })
+    }
+
+    /// Start the background task to continuously monitor for peers.
+    /// This MUST be called from within a Tokio runtime (e.g., in Tauri's setup hook).
+    pub fn start_discovery_monitor(&self) {
+        let peers_clone = self.discovered_peers.clone();
+        let discovery_clone = self.discovery.clone();
 
         tokio::spawn(async move {
             if let Ok(receiver) = discovery_clone.browse() {
@@ -79,15 +91,6 @@ impl SynqNetLayer {
                 }
             }
         });
-
-        Ok(Self {
-            discovery,
-            discovered_peers,
-            transport: None,
-            noise: None,
-            reconnect: ReconnectState::new(ReconnectConfig::default()),
-            local_private_key,
-        })
     }
 
     /// Perform the Noise XX handshake over WebRTC.
