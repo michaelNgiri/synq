@@ -50,7 +50,7 @@ pub struct SynqNetLayer {
 impl SynqNetLayer {
     pub fn new(local_private_key: Vec<u8>) -> SynqResult<Self> {
         let discovery = discovery::MdnsDiscovery::new()?;
-        let discovered_peers = Arc::new(Mutex::new(Vec::new()));
+        let discovered_peers: Arc<Mutex<Vec<PeerInfo>>> = Arc::new(Mutex::new(Vec::new()));
 
         // Start a background task to continuously monitor for peers
         let peers_clone = discovered_peers.clone();
