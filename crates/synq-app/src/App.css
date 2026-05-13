@@ -202,6 +202,17 @@ button {
   to { opacity: 1; transform: translateY(0); }
 }
 
+.badge {
+  padding: 4px 10px;
+  background: var(--accent-glow);
+  color: var(--accent-color);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .searching-container {
   display: flex;
   flex-direction: column;

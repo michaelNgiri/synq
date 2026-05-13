@@ -105,8 +105,8 @@ async fn emergency_kill(_state: State<'_, AppState>) -> Result<(), String> {
 // App Entry Point
 // -------------------------------------------------------------------------
 
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -127,39 +127,50 @@ pub fn run() {
     tauri::Builder::default()
         .manage(app_state)
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(|app| {
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let show_i = MenuItem::with_id(app, "show", "Settings", true, None::<&str>)?;
-            let kill_i = MenuItem::with_id(app, "kill", "Emergency Kill", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_i, &kill_i, &quit_i])?;
+            let show = MenuItem::with_id(app, "show", "Open Dashboard", true, None::<&str>)?;
+            let hide = MenuItem::with_id(app, "hide", "Hide to Tray", true, None::<&str>)?;
+            let about = MenuItem::with_id(app, "about", "About Synq...", true, None::<&str>)?;
+            let kill = MenuItem::with_id(app, "kill", "🛑 Emergency Kill", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit Synq", true, None::<&str>)?;
+            let separator = PredefinedMenuItem::separator(app)?;
 
-            let tray_icon = app.default_window_icon().unwrap().clone();
+            let menu = Menu::with_items(app, &[&show, &hide, &separator, &about, &kill, &separator, &quit])?;
 
             let tray = TrayIconBuilder::new()
-                .icon(tray_icon)
+                .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
+                .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
-                    if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                            let is_visible = window.is_visible().unwrap_or(false);
-                            if is_visible {
-                                window.hide().unwrap();
-                            } else {
-                                window.show().unwrap();
-                                window.set_focus().unwrap();
-                            }
+                            let _ = window.show();
+                            let _ = window.set_focus();
                         }
                     }
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
-                        std::process::exit(0);
+                        app.exit(0);
                     }
                     "show" => {
-                        let window = app.get_webview_window("main").unwrap();
-                        window.show().unwrap();
-                        window.set_focus().unwrap();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "hide" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.hide();
+                        }
                     }
                     "kill" => {
                         killswitch::activate();

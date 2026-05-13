@@ -128,6 +128,10 @@ function App() {
       )}
 
       <footer className="card kill-switch" style={{ marginTop: 'auto', gap: '12px', padding: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+          <span className="badge">Phase 1: Shell</span>
+          <span className="badge" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-secondary)' }}>v0.1.0</span>
+        </div>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
           Safety override for all input injection
         </p>
