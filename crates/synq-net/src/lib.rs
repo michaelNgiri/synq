@@ -137,6 +137,7 @@ impl SynqNetLayer {
                                 if let Ok(msg) = serde_json::from_slice::<SignalingMessage>(data) {
                                     match msg {
                                         SignalingMessage::Offer { sdp, from } => {
+                                            let _ = daemon_app.emit("debug-log", serde_json::json!({ "message": format!("UDP Signaling: Offer received from {}", from), "level": "info", "timestamp": 0 }));
                                             if from != device_id {
                                                 info!("Incoming connection offer from {} ({})", from, addr);
                                                 let sig_tx_inner = sig_tx_inner_main.clone();
@@ -208,22 +209,40 @@ impl SynqNetLayer {
                             }
                         }
                         _ = tokio::time::sleep(tokio::time::Duration::from_secs(3)) => {
-                            let ip = local_ip_address::local_ip().ok();
-                            if let Some(ip) = ip {
-                                let local_peer = PeerInfo {
-                                    device_id,
-                                    name: name.clone(),
-                                    platform: if cfg!(target_os = "macos") { synq_core::Platform::MacOS } else { synq_core::Platform::Windows },
-                                    screen: synq_core::ScreenGeometry { width: 0, height: 0, x: 0, y: 0 },
-                                    address: Some(format!("{}:52821", ip)),
-                                };
-                                if let Ok(data) = serde_json::to_vec(&local_peer) {
-                                    let _ = socket.send_to(&data, "255.255.255.255:52821").await;
+                            let interfaces = if_addrs::get_if_addrs().unwrap_or_default();
+                            for iface in interfaces {
+                                // Skip loopback and tunnel interfaces
+                                if iface.name.contains("utun") || iface.name.contains("vpn") || iface.name.contains("lo0") {
+                                    continue;
+                                }
+
+                                match iface.addr {
+                                    if_addrs::IfAddr::V4(v4) => {
+                                        if v4.ip.is_loopback() { continue; }
+                                        if let Some(broadcast) = v4.broadcast {
+                                            let local_peer = PeerInfo {
+                                                device_id,
+                                                name: name.clone(),
+                                                platform: if cfg!(target_os = "macos") { synq_core::Platform::MacOS } else { synq_core::Platform::Windows },
+                                                screen: synq_core::ScreenGeometry { width: 1920, height: 1080, x: 0, y: 0 },
+                                                address: Some(format!("{}:52821", v4.ip)),
+                                            };
+
+                                            if let Ok(data) = serde_json::to_vec(&local_peer) {
+                                                let target = format!("{}:52821", broadcast);
+                                                let _ = socket.send_to(&data, &target).await;
+                                                let _ = socket.send_to(&data, "255.255.255.255:52821").await;
+                                            }
+                                        }
+                                    }
+                                    _ => {} // Skip IPv6 for discovery for now
                                 }
                             }
                         }
                     }
                 }
+            } else {
+                error!("CRITICAL: Could not bind UDP signaling socket on 52821. Port may be in use.");
             }
         });
     }

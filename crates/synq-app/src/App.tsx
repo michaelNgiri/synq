@@ -95,6 +95,7 @@ function App() {
 
   const [manualIp, setManualIp] = useState("");
   const [showManual, setShowManual] = useState(false);
+  const [isLogExpanded, setIsLogExpanded] = useState(false);
 
   const handleConnect = async (peer: PeerInfo) => {
     if (hasPermissions === false) {
@@ -198,7 +199,7 @@ function App() {
         </div>
       )}
 
-      <header style={{ marginTop: hasPermissions === false ? '0' : '30px' }}>
+      <header style={{ marginTop: hasPermissions === false ? '0' : '30px', display: isLogExpanded ? 'none' : 'flex' }}>
         <h1 style={{ letterSpacing: '2px' }}>SYNQ</h1>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
           <div className="device-badge">
@@ -225,137 +226,159 @@ function App() {
       </header>
 
       {/* Debug Console Section */}
-      <section className="card debug-console" style={{ maxHeight: '150px', overflowY: 'auto', background: '#000', padding: '10px', fontSize: '0.75rem', fontFamily: 'monospace', marginBottom: '20px', border: '1px solid #333' }}>
+      <section className="card debug-console" style={{ 
+        height: isLogExpanded ? 'calc(100vh - 40px)' : '180px', 
+        transition: 'height 0.3s ease',
+        overflowY: 'auto', 
+        background: '#000', 
+        padding: '10px', 
+        fontSize: '0.75rem', 
+        fontFamily: 'monospace', 
+        marginBottom: isLogExpanded ? '0' : '20px', 
+        border: '1px solid #333',
+        position: isLogExpanded ? 'fixed' : 'relative',
+        top: isLogExpanded ? '20px' : 'auto',
+        left: isLogExpanded ? '20px' : 'auto',
+        right: isLogExpanded ? '20px' : 'auto',
+        zIndex: 1000
+      }}>
         <div style={{ color: '#0f0', marginBottom: '5px', borderBottom: '1px solid #222', paddingBottom: '2px', display: 'flex', justifyContent: 'space-between' }}>
           <span>SYSTEM LOG</span>
-          <span style={{ cursor: 'pointer', color: '#666' }} onClick={() => setDebugLogs([])}>Clear</span>
+          <div style={{ display: 'flex', gap: '15px' }}>
+            <span style={{ cursor: 'pointer', color: '#666' }} onClick={() => setIsLogExpanded(!isLogExpanded)}>{isLogExpanded ? '[ Minimize ]' : '[ Maximize ]'}</span>
+            <span style={{ cursor: 'pointer', color: '#666' }} onClick={() => setDebugLogs([])}>Clear</span>
+          </div>
         </div>
         {debugLogs.length === 0 && <div style={{ color: '#444' }}>Waiting for activity...</div>}
         {debugLogs.map((log, i) => (
-          <div key={i} style={{ color: log.level === 'error' ? '#f55' : log.level === 'warn' ? '#ff5' : '#aaa', marginBottom: '2px' }}>
+          <div key={i} style={{ color: log.level === 'error' ? '#f55' : log.level === 'warn' ? '#ff5' : '#aaa', marginBottom: '2px', overflowWrap: 'break-word' }}>
             <span style={{ color: '#555' }}>[{new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span> {log.message}
           </div>
         ))}
       </section>
 
-      {!isDiscovering && peers.length === 0 && !showManual ? (
-        <section className="card">
-          <div className="status-info">
-            <div className="pulse-dot"></div>
-            <p>Continuity daemon active & running</p>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
-            <button className="btn-primary" onClick={handleDiscovery}>
-              🌐 Start Discovery
-            </button>
-            <button 
-              style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-              onClick={() => setShowManual(true)}
-            >
-              ⌨️ Connect Manually
-            </button>
-          </div>
-        </section>
-      ) : (
-        <section className="peers-section">
-          {showManual && (
-            <div className="card" style={{ marginBottom: '20px', animation: 'fadeIn 0.3s ease' }}>
-              <h3 style={{ fontSize: '0.9rem', marginBottom: '12px' }}>Enter Device IP</h3>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input 
-                  type="text" 
-                  placeholder="e.g. 192.168.1.50" 
-                  value={manualIp}
-                  onChange={(e) => setManualIp(e.target.value)}
-                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                />
-                <button className="btn-primary" style={{ padding: '0 20px' }} onClick={handleManualConnect}>
-                  Link
+      {!isLogExpanded && (
+        <>
+          {!isDiscovering && peers.length === 0 && !showManual ? (
+            <section className="card">
+              <div className="status-info">
+                <div className="pulse-dot"></div>
+                <p>Continuity daemon active & running</p>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
+                <button className="btn-primary" onClick={handleDiscovery}>
+                  🌐 Start Discovery
                 </button>
-              </div>
-              <button 
-                onClick={() => setShowManual(false)}
-                style={{ marginTop: '12px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem' }}
-              >
-                ← Back to Discovery
-              </button>
-            </div>
-          )}
-
-          {isDiscovering && (
-            <div className="searching-container">
-              <div className="searching-rings">
-                <div className="ring"></div>
-                <div className="ring"></div>
-                <div className="ring"></div>
-                <span style={{ fontSize: '1.5rem' }}>📡</span>
-              </div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                Searching for nearby devices...
-              </p>
-            </div>
-          )}
-
-          {peers.length > 0 && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', padding: '0 8px' }}>
-                <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                  DISCOVERED PEERS
-                </h3>
                 <button 
-                  style={{ background: 'transparent', border: 'none', color: 'var(--accent-color)', fontSize: '0.7rem', cursor: 'pointer' }}
-                  onClick={() => setPeers([])}
+                  style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                  onClick={() => setShowManual(true)}
                 >
-                  Clear List
+                  ⌨️ Connect Manually
                 </button>
               </div>
-              {peers.map((peer) => (
-                <div key={peer.device_id} className="peer-card">
-                  <div className="peer-info">
-                    <h4>{peer.name}</h4>
-                    <span>{peer.platform} • {peer.address || "Local Network"}</span>
+            </section>
+          ) : (
+            <section className="peers-section">
+              {showManual && (
+                <div className="card" style={{ marginBottom: '20px', animation: 'fadeIn 0.3s ease' }}>
+                  <h3 style={{ fontSize: '0.9rem', marginBottom: '12px' }}>Enter Device IP</h3>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. 192.168.1.50" 
+                      value={manualIp}
+                      onChange={(e) => setManualIp(e.target.value)}
+                      style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                    />
+                    <button className="btn-primary" style={{ padding: '0 20px' }} onClick={handleManualConnect}>
+                      Link
+                    </button>
                   </div>
                   <button 
-                    className={`connect-badge ${peer.status === 'connecting' ? 'connecting' : ''} ${peer.status === 'connected' ? 'connected' : ''}`} 
-                    onClick={() => handleConnect(peer)}
-                    disabled={peer.status === 'connecting' || peer.status === 'connected'}
+                    onClick={() => setShowManual(false)}
+                    style={{ marginTop: '12px', background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem' }}
                   >
-                    {peer.status === 'connecting' ? '...' : peer.status === 'connected' ? 'Connected' : 'Connect'}
+                    ← Back to Discovery
                   </button>
                 </div>
-              ))}
-            </>
+              )}
+
+              {isDiscovering && (
+                <div className="searching-container">
+                  <div className="searching-rings">
+                    <div className="ring"></div>
+                    <div className="ring"></div>
+                    <div className="ring"></div>
+                    <span style={{ fontSize: '1.5rem' }}>📡</span>
+                  </div>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                    Searching for nearby devices...
+                  </p>
+                </div>
+              )}
+
+              {peers.length > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', padding: '0 8px' }}>
+                    <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                      DISCOVERED PEERS
+                    </h3>
+                    <button 
+                      style={{ background: 'transparent', border: 'none', color: 'var(--accent-color)', fontSize: '0.7rem', cursor: 'pointer' }}
+                      onClick={() => setPeers([])}
+                    >
+                      Clear List
+                    </button>
+                  </div>
+                  {peers.map((peer) => (
+                    <div key={peer.device_id} className="peer-card">
+                      <div className="peer-info">
+                        <h4>{peer.name}</h4>
+                        <span>{peer.platform} • {peer.address || "Local Network"}</span>
+                      </div>
+                      <button 
+                        className={`connect-badge ${peer.status === 'connecting' ? 'connecting' : ''} ${peer.status === 'connected' ? 'connected' : ''}`} 
+                        onClick={() => handleConnect(peer)}
+                        disabled={peer.status === 'connecting' || peer.status === 'connected'}
+                      >
+                        {peer.status === 'connecting' ? '...' : peer.status === 'connected' ? 'Connected' : 'Connect'}
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              <button 
+                style={{ marginTop: '20px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                onClick={() => {
+                  setIsDiscovering(false);
+                  setPeers([]);
+                  setShowManual(false);
+                }}
+              >
+                ← Back to Home
+              </button>
+            </section>
           )}
 
-          <button 
-            style={{ marginTop: '20px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-            onClick={() => {
-              setIsDiscovering(false);
-              setPeers([]);
-              setShowManual(false);
-            }}
-          >
-            ← Back to Home
-          </button>
-        </section>
+          <footer className="card kill-switch" style={{ marginTop: 'auto', gap: '12px', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+              <span className="badge">Phase 1: Shell</span>
+              <span className="badge" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-secondary)' }}>v0.1.0</span>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+              Safety override for all input injection
+            </p>
+            <button className="btn-danger" onClick={handleEmergencyKill}>
+              🛑 Emergency Kill-switch
+            </button>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '4px', opacity: 0.7 }}>
+              Global Hotkey: <strong>Alt + Shift + Esc</strong>
+            </span>
+          </footer>
+        </>
       )}
-
-      <footer className="card kill-switch" style={{ marginTop: 'auto', gap: '12px', padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
-          <span className="badge">Phase 1: Shell</span>
-          <span className="badge" style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', color: 'var(--text-secondary)' }}>v0.1.0</span>
-        </div>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
-          Safety override for all input injection
-        </p>
-        <button className="btn-danger" onClick={handleEmergencyKill}>
-          🛑 Emergency Kill-switch
-        </button>
-        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '4px', opacity: 0.7 }}>
-          Global Hotkey: <strong>Alt + Shift + Esc</strong>
-        </span>
-      </footer>
     </main>
   );
 }
