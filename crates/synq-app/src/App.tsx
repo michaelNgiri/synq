@@ -26,12 +26,25 @@ function App() {
   const [isDiscovering, setIsDiscovering] = useState(false);
 
   const [localIp, setLocalIp] = useState<string | null>(null);
+  const [hasPermissions, setHasPermissions] = useState<boolean | null>(null);
+  const [osName, setOsName] = useState<string>("");
 
   useEffect(() => {
     async function init() {
       try {
         const id = await invoke<string>("get_device_info");
         setDeviceId(id);
+        
+        const perms = await invoke<boolean>("check_permissions");
+        setHasPermissions(perms);
+        
+        if (navigator.userAgent.includes("Mac")) {
+          setOsName("macOS");
+        } else if (navigator.userAgent.includes("Win")) {
+          setOsName("Windows");
+        } else {
+          setOsName("Linux");
+        }
       } catch (e) {
         console.error(e);
       }
@@ -84,6 +97,14 @@ function App() {
   const [showManual, setShowManual] = useState(false);
 
   const handleConnect = async (peer: PeerInfo) => {
+    if (hasPermissions === false) {
+      const msg = osName === "macOS" 
+        ? "Please grant SYNQ 'Accessibility' permissions in System Settings > Privacy & Security to allow input sharing." 
+        : "System permissions are missing. Input sharing may not work.";
+      alert(`⚠️ Permissions Required\n\n${msg}`);
+      return;
+    }
+
     try {
       console.log("Initiating connection to:", peer);
       setDebugLogs(prev => [{ message: `Click: Connect to ${peer.name}`, level: "info", timestamp: Date.now() }, ...prev]);
@@ -152,8 +173,33 @@ function App() {
 
   return (
     <main className="container">
-      <header>
-        <h1>Synq Engine</h1>
+      {hasPermissions === false && (
+        <div style={{ background: 'rgba(255, 60, 60, 0.15)', borderBottom: '1px solid rgba(255, 60, 60, 0.3)', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ff6b6b', fontWeight: 'bold' }}>
+            <span>⚠️</span> {osName === "macOS" ? "Accessibility Permissions Required" : "System Permissions Required"}
+          </div>
+          <p style={{ fontSize: '0.85rem', color: '#ffbaba', margin: 0, lineHeight: 1.4 }}>
+            {osName === "macOS" ? (
+              <>SYNQ needs permission to capture and inject your mouse & keyboard. Go to <strong>System Settings &gt; Privacy &amp; Security &gt; Accessibility</strong> and enable SYNQ.</>
+            ) : (
+              <>SYNQ needs elevated permissions to capture and inject inputs on this system.</>
+            )}
+          </p>
+          <button 
+            onClick={async () => {
+              const perms = await invoke<boolean>("check_permissions");
+              setHasPermissions(perms);
+              if (perms) alert("Permissions verified!");
+            }}
+            style={{ alignSelf: 'flex-start', background: 'transparent', border: '1px solid #ff6b6b', color: '#ff6b6b', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', marginTop: '4px' }}
+          >
+            Check Again
+          </button>
+        </div>
+      )}
+
+      <header style={{ marginTop: hasPermissions === false ? '0' : '30px' }}>
+        <h1 style={{ letterSpacing: '2px' }}>SYNQ</h1>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
           <div className="device-badge">
             <span>Local Device ID:</span>
@@ -253,11 +299,19 @@ function App() {
 
           {peers.length > 0 && (
             <>
-              <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', paddingLeft: '8px', marginTop: '20px' }}>
-                DISCOVERED PEERS
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', padding: '0 8px' }}>
+                <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  DISCOVERED PEERS
+                </h3>
+                <button 
+                  style={{ background: 'transparent', border: 'none', color: 'var(--accent-color)', fontSize: '0.7rem', cursor: 'pointer' }}
+                  onClick={() => setPeers([])}
+                >
+                  Clear List
+                </button>
+              </div>
               {peers.map((peer) => (
-                <div key={peer.device_id[0]} className="peer-card">
+                <div key={peer.device_id} className="peer-card">
                   <div className="peer-info">
                     <h4>{peer.name}</h4>
                     <span>{peer.platform} • {peer.address || "Local Network"}</span>
@@ -276,9 +330,13 @@ function App() {
 
           <button 
             style={{ marginTop: '20px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
-            onClick={() => setIsDiscovering(false)}
+            onClick={() => {
+              setIsDiscovering(false);
+              setPeers([]);
+              setShowManual(false);
+            }}
           >
-            Stop Searching
+            ← Back to Home
           </button>
         </section>
       )}
@@ -294,6 +352,9 @@ function App() {
         <button className="btn-danger" onClick={handleEmergencyKill}>
           🛑 Emergency Kill-switch
         </button>
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '4px', opacity: 0.7 }}>
+          Global Hotkey: <strong>Ctrl + Shift + Esc</strong>
+        </span>
       </footer>
     </main>
   );

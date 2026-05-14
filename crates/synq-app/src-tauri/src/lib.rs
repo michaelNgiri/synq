@@ -233,6 +233,12 @@ async fn emergency_kill(_state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn check_permissions(state: State<'_, AppState>) -> Result<bool, String> {
+    let daemon = state.daemon.lock().await;
+    daemon.input.check_permissions().map_err(|e| e.to_string())
+}
+
 // -------------------------------------------------------------------------
 // App Entry Point
 // -------------------------------------------------------------------------
@@ -247,6 +253,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_shortcuts(["ctrl+shift+escape"]).unwrap().with_handler(|_app, shortcut, event| {
+            if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                if shortcut.matches(tauri_plugin_global_shortcut::Modifiers::CONTROL | tauri_plugin_global_shortcut::Modifiers::SHIFT, tauri_plugin_global_shortcut::Code::Escape) {
+                    tracing::info!("Global shortcut triggered: Ctrl+Shift+Escape");
+                    synq_input::killswitch::activate();
+                }
+            }
+        }).build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -322,7 +336,8 @@ pub fn run() {
             get_local_ip,
             start_discovery,
             connect_to_peer,
-            emergency_kill
+            emergency_kill,
+            check_permissions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
