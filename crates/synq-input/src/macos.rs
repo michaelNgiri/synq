@@ -1,40 +1,26 @@
 //! macOS input engine using CoreGraphics CGEvent API (Tier 1).
-//!
-//! This implementation posts events at `CGEventTapLocation::HID` level,
-//! which is the lowest injection point available without a kernel extension.
-//! Requires Accessibility permissions in System Settings.
 
 use core_graphics::display::CGPoint;
 use core_graphics::event::{
     CGEvent, CGEventTapLocation, CGEventType, CGKeyCode, CGMouseButton,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
-use synq_core::{InputEvent, InputEventKind, MouseButton, SynqError, SynqResult};
+use synq_core::{InputEvent, InputEventKind, MouseButton, Modifiers, SynqError, SynqResult};
 
 use crate::killswitch;
 use crate::InputEngine;
 
 /// macOS input engine backed by CoreGraphics CGEvent.
-///
-/// Note: `CGEventSource` contains a `NonNull` pointer that is not `Send`/`Sync`.
-/// We wrap it in an unsafe impl because CGEvent posting is thread-safe when
-/// using `HIDSystemState` — the OS serializes all HID events regardless.
 pub struct MacOSInputEngine {
     source: CGEventSource,
 }
 
-// SAFETY: CGEventSource with HIDSystemState is safe to use across threads.
-// The OS HID event queue serializes all posted events.
 unsafe impl Send for MacOSInputEngine {}
 unsafe impl Sync for MacOSInputEngine {}
 
 impl MacOSInputEngine {
-    /// Create a new macOS input engine.
-    ///
-    /// Uses `HIDSystemState` as the event source, which is required for
-    /// HID-level event posting.
     pub fn new() -> SynqResult<Self> {
         let source =
             CGEventSource::new(CGEventSourceStateID::HIDSystemState).map_err(|_| {
@@ -43,7 +29,6 @@ impl MacOSInputEngine {
         Ok(Self { source })
     }
 
-    /// Post a CGEvent at the HID tap location.
     fn post_event(&self, event: &CGEvent) {
         event.post(CGEventTapLocation::HID);
     }
@@ -51,7 +36,6 @@ impl MacOSInputEngine {
 
 impl InputEngine for MacOSInputEngine {
     fn inject_event(&self, event: &InputEvent) -> SynqResult<()> {
-        // Safety check — refuse if kill-switch is active
         killswitch::check()?;
 
         match &event.kind {
@@ -105,7 +89,6 @@ impl InputEngine for MacOSInputEngine {
                     (MouseButton::Middle, false) => {
                         (CGEventType::OtherMouseUp, CGMouseButton::Center)
                     }
-                    // Back/Forward are OtherMouse with different button numbers
                     _ => {
                         let et = if *pressed {
                             CGEventType::OtherMouseDown
@@ -116,8 +99,6 @@ impl InputEngine for MacOSInputEngine {
                     }
                 };
 
-                // We need a position for mouse button events — use (0,0) as we
-                // only care about the button state, not position.
                 let cg_event = CGEvent::new_mouse_event(
                     self.source.clone(),
                     event_type,
@@ -151,16 +132,11 @@ impl InputEngine for MacOSInputEngine {
             }
 
             InputEventKind::Scroll { dx, dy } => {
-                // CGEvent doesn't have a direct new_scroll_event in this crate version.
-                // Use a generic CGEvent and set scroll wheel fields manually.
                 let cg_event = CGEvent::new(self.source.clone())
                     .map_err(|_| SynqError::InputInjection("Failed to create scroll event".into()))?;
 
                 cg_event.set_type(CGEventType::ScrollWheel);
 
-                // Raw CoreGraphics field constants:
-                // kCGScrollWheelEventDeltaAxis1 = 11 (vertical scroll)
-                // kCGScrollWheelEventDeltaAxis2 = 12 (horizontal scroll)
                 const SCROLL_WHEEL_DELTA_AXIS1: u32 = 11;
                 const SCROLL_WHEEL_DELTA_AXIS2: u32 = 12;
 
@@ -174,34 +150,90 @@ impl InputEngine for MacOSInputEngine {
         }
     }
 
-    fn grab_input(&self) -> SynqResult<()> {
-        // Phase 1: Implemented via CGEventTap in a later iteration.
-        // For now, this is a no-op — input forwarding is handled at the
-        // focus arbiter level by intercepting events before they reach apps.
-        tracing::info!("Input grab requested (macOS) — placeholder");
+    fn start_capture(&self, callback: Box<dyn Fn(InputEvent) + Send + Sync>) -> SynqResult<()> {
+        info!("Starting input capture (macOS)...");
+        
+        tokio::spawn(async move {
+            if let Err(error) = rdev::listen(move |event| {
+                if let Some(kind) = map_rdev_to_synq(event) {
+                    callback(InputEvent {
+                        kind,
+                        timestamp_us: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_micros() as u64,
+                    });
+                }
+            }) {
+                error!("rdev listen error: {:?}", error);
+            }
+        });
+
         Ok(())
     }
 
-    fn release_input(&self) -> SynqResult<()> {
-        tracing::info!("Input release requested (macOS) — placeholder");
+    fn stop_capture(&self) -> SynqResult<()> {
+        info!("Input capture stopped (macOS)");
         Ok(())
     }
 
     fn emergency_kill(&self) {
         killswitch::activate();
-        // Best-effort release
-        let _ = self.release_input();
+        let _ = self.stop_capture();
     }
 
     fn check_permissions(&self) -> SynqResult<bool> {
-        // Try creating a test event — if it fails, permissions aren't granted
         let test = CGEvent::new_keyboard_event(self.source.clone(), 0, false);
         match test {
             Ok(_) => Ok(true),
             Err(_) => {
-                error!("Accessibility permissions not granted — go to System Settings > Privacy & Security > Accessibility");
+                error!("Accessibility permissions not granted");
                 Ok(false)
             }
         }
     }
+}
+
+fn map_rdev_to_synq(event: rdev::Event) -> Option<InputEventKind> {
+    match event.event_type {
+        rdev::EventType::MouseMove { x, y } => Some(InputEventKind::MouseMoveTo {
+            x: x as i32,
+            y: y as i32,
+        }),
+        rdev::EventType::ButtonPress(button) => Some(InputEventKind::MouseButton {
+            button: map_rdev_button(button),
+            pressed: true,
+        }),
+        rdev::EventType::ButtonRelease(button) => Some(InputEventKind::MouseButton {
+            button: map_rdev_button(button),
+            pressed: false,
+        }),
+        rdev::EventType::KeyPress(key) => Some(InputEventKind::Key {
+            keycode: map_rdev_key(key),
+            pressed: true,
+            modifiers: Modifiers::default(),
+        }),
+        rdev::EventType::KeyRelease(key) => Some(InputEventKind::Key {
+            keycode: map_rdev_key(key),
+            pressed: false,
+            modifiers: Modifiers::default(),
+        }),
+        rdev::EventType::Wheel { delta_x, delta_y } => Some(InputEventKind::Scroll {
+            dx: delta_x as i32,
+            dy: delta_y as i32,
+        }),
+    }
+}
+
+fn map_rdev_button(button: rdev::Button) -> MouseButton {
+    match button {
+        rdev::Button::Left => MouseButton::Left,
+        rdev::Button::Right => MouseButton::Right,
+        rdev::Button::Middle => MouseButton::Middle,
+        _ => MouseButton::Left,
+    }
+}
+
+fn map_rdev_key(_key: rdev::Key) -> u16 {
+    0 
 }

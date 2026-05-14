@@ -32,10 +32,14 @@ pub struct SynqClipboardEngine {
     current: Option<ClipboardObject>,
     is_running: bool,
     device_id: DeviceId,
+    broadcast_cb: Option<Arc<dyn Fn(synq_core::ClipboardObject) + Send + Sync>>,
 }
 
 impl SynqClipboardEngine {
-    pub fn new(device_id: DeviceId) -> Self {
+    pub fn new(
+        device_id: DeviceId, 
+        broadcast_cb: Option<Arc<dyn Fn(synq_core::ClipboardObject) + Send + Sync>>
+    ) -> Self {
         Self {
             observer: Arc::new(Mutex::new(ClipboardObserver::new(device_id))),
             store: Arc::new(Mutex::new(CrdtStore::new())),
@@ -43,6 +47,7 @@ impl SynqClipboardEngine {
             current: None,
             is_running: false,
             device_id,
+            broadcast_cb,
         }
     }
 
@@ -50,7 +55,7 @@ impl SynqClipboardEngine {
     async fn poll_loop(
         observer: Arc<Mutex<ClipboardObserver>>,
         store: Arc<Mutex<CrdtStore>>,
-        _device_id: DeviceId,
+        broadcast_cb: Option<Arc<dyn Fn(ClipboardObject) + Send + Sync>>,
     ) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(250));
         loop {
@@ -61,8 +66,10 @@ impl SynqClipboardEngine {
                 Ok(Some(obj)) => {
                     info!("Local clipboard change detected: {}", obj.mime_type);
                     let mut s = store.lock().await;
-                    let _ = s.insert(obj);
-                    // TODO: Broadcast this update via synq-net
+                    let _ = s.insert(obj.clone());
+                    if let Some(cb) = &broadcast_cb {
+                        cb(obj);
+                    }
                 }
                 Ok(None) => {}
                 Err(e) => error!("Clipboard poll error: {:?}", e),
@@ -78,10 +85,12 @@ impl ClipboardEngine for SynqClipboardEngine {
         
         let observer = self.observer.clone();
         let store = self.store.clone();
-        let device_id = self.device_id;
+        let _device_id = self.device_id;
+        
+        let broadcast_cb = self.broadcast_cb.clone();
         
         tokio::spawn(async move {
-            Self::poll_loop(observer, store, device_id).await;
+            Self::poll_loop(observer, store, broadcast_cb).await;
         });
         
         self.is_running = true;

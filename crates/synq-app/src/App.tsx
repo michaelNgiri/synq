@@ -7,13 +7,22 @@ function App() {
   const [deviceId, setDeviceId] = useState<string>("Loading...");
 
   interface PeerInfo {
-    device_id: { 0: string };
+    device_id: string; // Backend expects string for Uuid tuple
     name: string;
-    platform: string;
+    platform: 'MacOS' | 'Windows';
+    screen: { width: number, height: number, x: number, y: number };
     address: string;
+    status?: 'connecting' | 'connected' | 'error';
+  }
+
+  interface LogEntry {
+    message: string;
+    level: string;
+    timestamp: number;
   }
 
   const [peers, setPeers] = useState<PeerInfo[]>([]);
+  const [debugLogs, setDebugLogs] = useState<LogEntry[]>([]);
   const [isDiscovering, setIsDiscovering] = useState(false);
 
   const [localIp, setLocalIp] = useState<string | null>(null);
@@ -32,17 +41,23 @@ function App() {
     // Listen for discovery events from backend
     const unlistenDiscovered = listen<PeerInfo>("peer-discovered", (event) => {
       setPeers((prev) => {
-        if (prev.find((p) => p.device_id[0] === event.payload.device_id[0])) return prev;
+        if (prev.find((p) => p.device_id === event.payload.device_id)) return prev;
         return [...prev, event.payload];
       });
     });
 
+    // Listen for debug logs from backend
+    const unlistenLogs = listen<LogEntry>("debug-log", (event) => {
+      setDebugLogs((prev) => [event.payload, ...prev].slice(0, 50));
+    });
+
     const unlistenRemoved = listen<string>("peer-removed", (event) => {
-      setPeers((prev) => prev.filter((p) => p.device_id[0] !== event.payload));
+      setPeers((prev) => prev.filter((p) => p.device_id !== event.payload));
     });
 
     return () => {
       unlistenDiscovered.then((f) => f());
+      unlistenLogs.then((f) => f());
       unlistenRemoved.then((f) => f());
     };
   }, []);
@@ -54,32 +69,75 @@ function App() {
 
   async function handleDiscovery() {
     setIsDiscovering(true);
+    setDebugLogs(prev => [{ message: "Discovery started...", level: "info", timestamp: Date.now() }, ...prev]);
     try {
       // Trigger registration and get current list
       const foundPeers = await invoke<PeerInfo[]>("start_discovery");
       setPeers(foundPeers);
     } catch (e) {
       console.error(e);
+      setDebugLogs(prev => [{ message: `Discovery error: ${e}`, level: "error", timestamp: Date.now() }, ...prev]);
     }
   }
 
   const [manualIp, setManualIp] = useState("");
   const [showManual, setShowManual] = useState(false);
 
+  const handleConnect = async (peer: PeerInfo) => {
+    try {
+      console.log("Initiating connection to:", peer);
+      setDebugLogs(prev => [{ message: `Click: Connect to ${peer.name}`, level: "info", timestamp: Date.now() }, ...prev]);
+      
+      // Transition UI to connecting state
+      setPeers((prev) => 
+        prev.map(p => p.device_id === peer.device_id ? { ...p, status: 'connecting' } : p)
+      );
+      
+      await invoke("connect_to_peer", { peer });
+      
+      // Update status on success
+      setPeers((prev) => 
+        prev.map(p => p.device_id === peer.device_id ? { ...p, status: 'connected' } : p)
+      );
+    } catch (e) {
+      console.error("Connection failed:", e);
+      setDebugLogs(prev => [{ message: `Connection failed: ${e}`, level: "error", timestamp: Date.now() }, ...prev]);
+      alert(`Failed to connect to ${peer.name}: ${e}`);
+      
+      // Reset status on failure
+      setPeers((prev) => 
+        prev.map(p => p.device_id === peer.device_id ? { ...p, status: undefined } : p)
+      );
+    }
+  };
+
   async function handleManualConnect() {
     if (!manualIp) return;
+    setDebugLogs(prev => [{ message: `Manual link attempted: ${manualIp}`, level: "info", timestamp: Date.now() }, ...prev]);
     try {
-      // For now, we'll just simulate a connection or add it to the list
-      const mockPeer: PeerInfo = {
-        device_id: { 0: "manual-link" },
-        name: `Remote Device (${manualIp})`,
-        platform: "Remote",
-        address: manualIp
+      // Use 52821 for signaling
+      const fullAddress = manualIp.includes(":") ? manualIp : `${manualIp}:52821`;
+      
+      const manualPeer: PeerInfo = {
+        device_id: "00000000-0000-0000-0000-000000000000", 
+        name: `Manual Link`,
+        platform: "Windows",
+        screen: { width: 1920, height: 1080, x: 0, y: 0 },
+        address: fullAddress
       };
-      setPeers(prev => [...prev, mockPeer]);
-      alert(`Manual link established with ${manualIp}. Starting handshake...`);
+      
+      setPeers(prev => {
+        if (prev.find(p => p.address === fullAddress)) return prev;
+        return [...prev, manualPeer];
+      });
+      
+      setShowManual(false);
+      setManualIp("");
+      
+      await handleConnect(manualPeer);
     } catch (e) {
       console.error(e);
+      setDebugLogs(prev => [{ message: `Manual link failed: ${e}`, level: "error", timestamp: Date.now() }, ...prev]);
     }
   }
 
@@ -119,6 +177,20 @@ function App() {
           )}
         </div>
       </header>
+
+      {/* Debug Console Section */}
+      <section className="card debug-console" style={{ maxHeight: '150px', overflowY: 'auto', background: '#000', padding: '10px', fontSize: '0.75rem', fontFamily: 'monospace', marginBottom: '20px', border: '1px solid #333' }}>
+        <div style={{ color: '#0f0', marginBottom: '5px', borderBottom: '1px solid #222', paddingBottom: '2px', display: 'flex', justifyContent: 'space-between' }}>
+          <span>SYSTEM LOG</span>
+          <span style={{ cursor: 'pointer', color: '#666' }} onClick={() => setDebugLogs([])}>Clear</span>
+        </div>
+        {debugLogs.length === 0 && <div style={{ color: '#444' }}>Waiting for activity...</div>}
+        {debugLogs.map((log, i) => (
+          <div key={i} style={{ color: log.level === 'error' ? '#f55' : log.level === 'warn' ? '#ff5' : '#aaa', marginBottom: '2px' }}>
+            <span style={{ color: '#555' }}>[{new Date(log.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span> {log.message}
+          </div>
+        ))}
+      </section>
 
       {!isDiscovering && peers.length === 0 && !showManual ? (
         <section className="card">
@@ -190,8 +262,12 @@ function App() {
                     <h4>{peer.name}</h4>
                     <span>{peer.platform} • {peer.address || "Local Network"}</span>
                   </div>
-                  <button className="connect-badge" onClick={() => alert("Connecting...")}>
-                    Connect
+                  <button 
+                    className={`connect-badge ${peer.status === 'connecting' ? 'connecting' : ''} ${peer.status === 'connected' ? 'connected' : ''}`} 
+                    onClick={() => handleConnect(peer)}
+                    disabled={peer.status === 'connecting' || peer.status === 'connected'}
+                  >
+                    {peer.status === 'connecting' ? '...' : peer.status === 'connected' ? 'Connected' : 'Connect'}
                   </button>
                 </div>
               ))}

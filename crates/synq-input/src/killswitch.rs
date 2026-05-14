@@ -46,6 +46,19 @@ pub fn check() -> synq_core::SynqResult<()> {
 ///
 /// Hotkey: Ctrl + Shift + Escape
 pub fn start_hotkey_listener() {
+    // Permission check for macOS
+    #[cfg(target_os = "macos")]
+    {
+        use core_graphics::event::CGEvent;
+        use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState);
+        let allowed = source.is_ok() && CGEvent::new_keyboard_event(source.unwrap(), 0, false).is_ok();
+        if !allowed {
+            tracing::warn!("Accessibility permissions not granted. Kill-switch hotkey will NOT be active.");
+            return;
+        }
+    }
+
     thread::spawn(|| {
         let mut ctrl = false;
         let mut shift = false;

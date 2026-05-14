@@ -28,17 +28,12 @@ pub trait InputEngine: Send + Sync {
     fn inject_event(&self, event: &InputEvent) -> SynqResult<()>;
 
     /// Begin capturing local input (for forwarding to a remote peer).
-    ///
-    /// While grabbed, local input is intercepted and forwarded via the net layer
-    /// instead of being processed locally.
-    fn grab_input(&self) -> SynqResult<()>;
+    fn start_capture(&self, callback: Box<dyn Fn(InputEvent) + Send + Sync>) -> SynqResult<()>;
 
     /// Release the local input grab, restoring normal input processing.
-    fn release_input(&self) -> SynqResult<()>;
+    fn stop_capture(&self) -> SynqResult<()>;
 
     /// Emergency kill-switch: immediately release all grabs and stop injection.
-    ///
-    /// This is the safety valve — it must never fail.
     fn emergency_kill(&self);
 
     /// Check if accessibility / input permissions are granted.

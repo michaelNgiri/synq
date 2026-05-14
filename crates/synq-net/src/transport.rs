@@ -91,6 +91,20 @@ impl WebRtcTransport {
         }));
     }
 
+    /// Set a callback for ICE candidate generation.
+    pub fn on_ice_candidate<F>(&self, mut f: F) 
+    where 
+        F: FnMut(String) + Send + Sync + 'static 
+    {
+        self.peer_connection.on_ice_candidate(Box::new(move |candidate| {
+            if let Some(candidate) = candidate {
+                let json = serde_json::to_string(&candidate.to_json().unwrap()).unwrap();
+                f(json);
+            }
+            Box::pin(async {})
+        }));
+    }
+
     /// Create an offer for the signaling exchange.
     pub async fn create_offer(&self) -> SynqResult<String> {
         let offer = self.peer_connection.create_offer(None).await
@@ -106,6 +120,29 @@ impl WebRtcTransport {
     pub async fn accept_answer(&self, sdp_json: &str) -> SynqResult<()> {
         let answer: RTCSessionDescription = serde_json::from_str(sdp_json)?;
         self.peer_connection.set_remote_description(answer).await
+            .map_err(|e| SynqError::Connection(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Create an answer for the signaling exchange.
+    pub async fn create_answer(&self, sdp_json: &str) -> SynqResult<String> {
+        let offer: RTCSessionDescription = serde_json::from_str(sdp_json)?;
+        self.peer_connection.set_remote_description(offer).await
+            .map_err(|e| SynqError::Connection(e.to_string()))?;
+        
+        let answer = self.peer_connection.create_answer(None).await
+            .map_err(|e| SynqError::Connection(e.to_string()))?;
+        
+        self.peer_connection.set_local_description(answer.clone()).await
+            .map_err(|e| SynqError::Connection(e.to_string()))?;
+
+        Ok(serde_json::to_string(&answer)?)
+    }
+
+    /// Add a remote ICE candidate.
+    pub async fn add_ice_candidate(&self, candidate_json: &str) -> SynqResult<()> {
+        let candidate = serde_json::from_str(candidate_json)?;
+        self.peer_connection.add_ice_candidate(candidate).await
             .map_err(|e| SynqError::Connection(e.to_string()))?;
         Ok(())
     }
