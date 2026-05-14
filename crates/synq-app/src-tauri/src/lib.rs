@@ -253,13 +253,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
-        .plugin(tauri_plugin_global_shortcut::Builder::new().with_shortcuts(["ctrl+shift+escape"]).unwrap().with_handler(|_app, shortcut, event| {
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_shortcuts(["alt+shift+escape"]).map(|b| b.with_handler(|_app, shortcut, event| {
             if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                if shortcut.matches(tauri_plugin_global_shortcut::Modifiers::CONTROL | tauri_plugin_global_shortcut::Modifiers::SHIFT, tauri_plugin_global_shortcut::Code::Escape) {
-                    tracing::info!("Global shortcut triggered: Ctrl+Shift+Escape");
+                if shortcut.matches(tauri_plugin_global_shortcut::Modifiers::ALT | tauri_plugin_global_shortcut::Modifiers::SHIFT, tauri_plugin_global_shortcut::Code::Escape) {
+                    tracing::info!("Global shortcut triggered: Alt+Shift+Escape");
                     synq_input::killswitch::activate();
                 }
             }
+        })).unwrap_or_else(|e| {
+            tracing::error!("Failed to initialize global shortcut plugin: {}", e);
+            tauri_plugin_global_shortcut::Builder::new()
         }).build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {

@@ -353,7 +353,7 @@ function App() {
           🛑 Emergency Kill-switch
         </button>
         <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textAlign: 'center', marginTop: '4px', opacity: 0.7 }}>
-          Global Hotkey: <strong>Ctrl + Shift + Esc</strong>
+          Global Hotkey: <strong>Alt + Shift + Esc</strong>
         </span>
       </footer>
     </main>

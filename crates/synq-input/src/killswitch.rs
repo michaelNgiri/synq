@@ -43,3 +43,4 @@ pub fn check() -> synq_core::SynqResult<()> {
 // We no longer start the listener here using rdev, as multiple rdev listeners
 // conflict and cause macOS crashes. The global hotkey is now managed by
 // tauri-plugin-global-shortcut in the main application shell.
+// Default Hotkey: Alt + Shift + Escape
