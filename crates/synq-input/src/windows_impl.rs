@@ -1,6 +1,6 @@
 //! Windows input engine using Win32 SendInput API (Tier 1).
 
-use synq_core::{InputEvent, MouseButton, InputEventKind, SynqError, SynqResult};
+use synq_core::{InputEvent, MouseButton, InputEventKind, SynqResult, Modifiers};
 use tracing::{info, error};
 
 use crate::killswitch;
@@ -31,10 +31,10 @@ impl InputEngine for WindowsInputEngine {
                 if let Some(kind) = map_rdev_to_synq(event) {
                     callback(InputEvent {
                         kind,
-                        timestamp: std::time::SystemTime::now()
+                        timestamp_us: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap()
-                            .as_millis() as u64,
+                            .as_micros() as u64,
                     });
                 }
             }) {
@@ -77,12 +77,12 @@ fn map_rdev_to_synq(event: rdev::Event) -> Option<InputEventKind> {
         rdev::EventType::KeyPress(key) => Some(InputEventKind::Key {
             keycode: map_rdev_key(key),
             pressed: true,
-            modifiers: 0,
+            modifiers: Modifiers::default(),
         }),
         rdev::EventType::KeyRelease(key) => Some(InputEventKind::Key {
             keycode: map_rdev_key(key),
             pressed: false,
-            modifiers: 0,
+            modifiers: Modifiers::default(),
         }),
         rdev::EventType::Wheel { delta_x, delta_y } => Some(InputEventKind::Scroll {
             dx: delta_x as i32,
@@ -100,6 +100,6 @@ fn map_rdev_button(button: rdev::Button) -> MouseButton {
     }
 }
 
-fn map_rdev_key(_key: rdev::Key) -> u32 {
+fn map_rdev_key(_key: rdev::Key) -> u16 {
     0 
 }

@@ -4,8 +4,6 @@
 //! when activated. Checked before every `inject_event()` call.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
-use rdev::{listen, EventType, Key};
 
 /// Global kill-switch state. When `true`, all injection is refused.
 static KILL_ACTIVE: AtomicBool = AtomicBool::new(false);
